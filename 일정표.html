@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>시험 업무 통합 관리 시스템 (최종 완성)</title>
+    
+    <!-- 필수 라이브러리 로드 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js'></script>
+    <!-- SheetJS (엑셀 기능) -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <!-- FontAwesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <style>
+        /* 기본 스타일 */
+        :root { --fiti-blue: #004098; --fiti-light-blue: #0066cc; --bg-gray: #f5f7fa; }
+        body { background-color: var(--bg-gray); font-family: 'Pretendard', 'Malgun Gothic', sans-serif; }
+        .fiti-header { background-color: white; border-bottom: 3px solid var(--fiti-blue); }
+        .fiti-btn { background-color: var(--fiti-blue); color: white; transition: 0.3s; }
+        .fiti-btn:hover { background-color: #002d6b; }
+        .tab-btn.active { background-color: var(--fiti-blue); color: white; font-weight: bold; border-bottom: 2px solid var(--fiti-blue); }
+        .tab-btn { color: #555; background: white; border: 1px solid #ddd; }
+        
+        .draggable-item { cursor: move; transition: border 0.1s; } 
+        .draggable-disabled { cursor: not-allowed; opacity: 0.8; }
+        .dragging { opacity: 0.5; background-color: #eef2ff; }
+        
+        .drop-over-top { border-top: 3px solid var(--fiti-blue) !important; }
+        .drop-over-bottom { border-bottom: 3px solid var(--fiti-blue) !important; }
+
+        /* 보류 상태 스타일 */
+        .held-row { background-color: #fff7ed !important; } /* 주황색 배경 */
+        .held-row td { color: #c2410c; } /* 텍스트 색상 */
+        
+        table { width: 100%; border-collapse: separate; border-spacing: 0; }
+        thead th { position: sticky; top: 0; z-index: 10; }
+        .header-title-row th { background-color: #e5e7eb; color: #1f2937; font-weight: 700; padding: 10px 8px; font-size: 0.9rem; border-bottom: 1px solid #d1d5db; white-space: nowrap; }
+        .header-filter-row th { background-color: #f3f4f6; padding: 6px 8px; border-bottom: 2px solid var(--fiti-blue); }
+        td { vertical-align: middle; padding: 10px 8px; border-bottom: 1px solid #e5e7eb; }
+        .completed-row { background-color: #f9fafb; color: #9ca3af; }
+        .filter-input { width: 100%; padding: 4px 8px; font-size: 0.8rem; border: 1px solid #d1d5db; border-radius: 4px; background-color: white; transition: all 0.2s; }
+        .filter-input:focus { outline: none; border-color: var(--fiti-light-blue); box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.1); }
+        
+        .fc-toolbar-title { font-size: 1.2rem !important; color: var(--fiti-blue); font-weight: bold; }
+        .fc-button-primary { background-color: var(--fiti-blue) !important; border: none !important; }
+        
+        /* 달력 주말 색상 커스텀 */
+        .fc .fc-day-sat .fc-col-header-cell-cushion,
+        .fc .fc-day-sat .fc-daygrid-day-number,
+        .fc .fc-day-sun .fc-col-header-cell-cushion,
+        .fc .fc-day-sun .fc-daygrid-day-number {
+            color: #dc2626 !important;
+            text-decoration: none;
+        }
+
+        .modal { transition: opacity 0.25s ease; }
+        .tag-input-container { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border: 1px solid #d1d5db; border-radius: 0.375rem; background-color: #f9fafb; }
+        .tag-item { background-color: #e0e7ff; color: #004098; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; display: flex; align-items: center; }
+        .tag-item button { margin-left: 4px; color: #6b7280; }
+        .tag-item button:hover { color: #ef4444; }
+        
+        .test-item-badge { cursor: pointer; transition: all 0.2s; border: 1px solid #e5e7eb; display: inline-flex; align-items: center; gap: 4px; margin-bottom: 2px; }
+        .test-item-badge:hover { transform: translateY(-1px); box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .test-item-done { background-color: #dbeafe; color: #1e40af; border-color: #bfdbfe; text-decoration: line-through; opacity: 0.7; }
+        .test-item-todo { background-color: white; color: #374151; }
+        .test-item-check { display: none; }
+        .test-item-done .test-item-check { display: inline-block; color: #2563eb; }
+
+        .chart-mode-btn { transition: all 0.2s; white-space: nowrap; }
+        .chart-mode-btn.active-mode { background-color: var(--fiti-blue); color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        
+        .btn-tooltip { position: relative; }
+        .btn-tooltip:hover::after { content: attr(data-tooltip); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap; margin-bottom: 5px; z-index: 20; display: none; }
+        .btn-tooltip:hover::after { display: block; }
+
+        #saveStatus { position: fixed; bottom: 20px; right: 20px; background: rgba(0,0,0,0.7); color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; opacity: 0; transition: opacity 0.5s; pointer-events: none; z-index: 9999; }
+        #saveStatus.show { opacity: 1; }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div id="saveStatus"><i class="fas fa-check mr-1"></i>저장됨 (IndexedDB)</div>
+
+    <header class="fiti-header shadow-sm sticky top-0 z-50">
+        <div class="container mx-auto px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-blue-900 text-white flex items-center justify-center rounded-lg text-xl"><i class="fas fa-flask"></i></div>
+                <h1 class="text-2xl font-bold text-gray-800 tracking-tight">시험 업무 통합 관리 시스템</h1>
+            </div>
+            <div class="flex space-x-1 w-full md:w-auto overflow-x-auto">
+                <button onclick="switchTab('listTab')" id="btn-listTab" class="tab-btn active px-6 py-2 rounded-t-lg whitespace-nowrap"><i class="fas fa-list mr-2"></i>접수 현황</button>
+                <button onclick="switchTab('calendarTab')" id="btn-calendarTab" class="tab-btn px-6 py-2 rounded-t-lg whitespace-nowrap"><i class="fas fa-calendar-alt mr-2"></i>일정표</button>
+                <button onclick="switchTab('chartTab')" id="btn-chartTab" class="tab-btn px-6 py-2 rounded-t-lg whitespace-nowrap"><i class="fas fa-chart-pie mr-2"></i>통계 분석</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-6">
+        <section class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-8 transition-colors duration-300" id="inputFormSection">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 pb-4 border-b border-gray-100 gap-4">
+                <h2 class="text-lg font-bold text-blue-900" id="formTitle"><i class="fas fa-pen-to-square mr-2"></i>신규 시험 접수 등록</h2>
+                <div class="flex flex-wrap items-center gap-3">
+                    <div class="flex gap-2">
+                        <button onclick="exportToExcel()" class="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded border border-green-700 transition shadow-sm font-bold"><i class="fas fa-file-excel mr-1"></i>엑셀 백업</button>
+                        <label class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded border border-gray-300 transition cursor-pointer shadow-sm"><i class="fas fa-file-import mr-1"></i>엑셀 복구<input type="file" id="importFile" onchange="importFromExcel(this)" class="hidden" accept=".xlsx, .xls"></label>
+                    </div>
+                    <div class="w-px h-4 bg-gray-300 mx-1"></div>
+                    <button onclick="openCategoryModal()" class="text-sm text-gray-600 hover:text-blue-700 underline flex items-center transition"><i class="fas fa-cog mr-1"></i> 분류 관리</button>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div><label class="block text-xs font-bold text-gray-600 mb-1">접수 번호</label><input type="text" id="regNo" placeholder="2024-001" class="w-full bg-gray-50 border border-gray-300 p-2.5 rounded text-sm focus:outline-none focus:border-blue-800 transition"></div>
+                <div><label class="block text-xs font-bold text-gray-600 mb-1">업체명</label><input type="text" id="companyName" list="companyList" placeholder="업체명 입력" class="w-full bg-gray-50 border border-gray-300 p-2.5 rounded text-sm focus:outline-none focus:border-blue-800 transition"><datalist id="companyList"></datalist></div>
+                <div><label class="block text-xs font-bold text-gray-600 mb-1">세부 분류</label><select id="classification" class="w-full bg-gray-50 border border-gray-300 p-2.5 rounded text-sm focus:outline-none focus:border-blue-800 transition"></select></div>
+                <div><label class="block text-xs font-bold text-gray-600 mb-1">접수자</label><input type="text" id="applicant" placeholder="담당자명" class="w-full bg-gray-50 border border-gray-300 p-2.5 rounded text-sm focus:outline-none focus:border-blue-800 transition"></div>
+                
+                <div class="md:col-span-2">
+                    <label class="block text-xs font-bold text-gray-600 mb-1">시험 항목 (입력 후 엔터)</label>
+                    <div class="flex gap-2">
+                        <div class="flex-grow tag-input-container min-h-[42px] items-center bg-white border border-gray-300 rounded relative">
+                            <div id="tagContainer" class="flex flex-wrap gap-1"></div>
+                            <input type="text" id="testItemInput" class="flex-grow min-w-[100px] outline-none text-sm p-1 bg-transparent" placeholder="예: 인장강도">
+                        </div>
+                        <button onclick="addTag()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded text-sm font-bold"><i class="fas fa-plus"></i></button>
+                    </div>
+                </div>
+
+                <div><label class="block text-xs font-bold text-gray-600 mb-1">접수 일자</label><input type="date" id="startDate" class="w-full bg-gray-50 border border-gray-300 p-2.5 rounded text-sm"></div>
+                <div><label class="block text-xs font-bold text-gray-600 mb-1">발급 예정일</label><input type="date" id="dueDate" class="w-full bg-gray-50 border border-gray-300 p-2.5 rounded text-sm"></div>
+                <div class="md:col-span-3"></div>
+                <div class="md:col-span-1"><label class="block text-xs font-bold text-gray-600 mb-1">수수료 (원)</label><input type="number" id="fee" placeholder="0" class="w-full bg-gray-50 border border-gray-300 p-2.5 rounded text-sm text-right focus:outline-none focus:border-blue-800 transition"></div>
+                
+                <div class="md:col-span-4 mt-2 flex gap-2">
+                    <button id="btnSave" onclick="saveExam()" class="flex-grow fiti-btn py-3 rounded font-bold shadow-md hover:shadow-lg transform active:scale-95 transition text-lg"><i class="fas fa-save mr-2"></i> 시험 접수 등록</button>
+                    <!-- 연속 등록 버튼 추가 -->
+                    <button id="btnBatchSave" onclick="saveBatchExams()" class="flex-grow-0 px-4 bg-indigo-600 text-white rounded font-bold shadow-md hover:bg-indigo-700 transform active:scale-95 transition text-lg" title="입력된 접수번호부터 연속된 번호로 여러 건 등록"><i class="fas fa-layer-group mr-2"></i>연속 등록</button>
+                    <button id="btnCancel" onclick="cancelEdit()" class="hidden px-6 py-3 rounded font-bold bg-gray-500 text-white shadow-md hover:bg-gray-600 transform active:scale-95 transition text-lg"><i class="fas fa-times mr-2"></i> 취소</button>
+                </div>
+            </div>
+        </section>
+
+        <div id="listTab" class="tab-content">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-8 overflow-hidden">
+                <div class="bg-blue-50 px-6 py-3 border-b border-blue-100 flex justify-between items-center">
+                    <div class="flex items-center"><h3 class="font-bold text-blue-900 mr-3"><i class="fas fa-spinner fa-spin mr-2"></i>진행 중인 시험</h3></div>
+                    <button onclick="resetProgressFilters()" class="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-100 transition"><i class="fas fa-undo mr-1"></i>필터 초기화</button>
+                </div>
+                <div id="dragWarning" class="hidden bg-yellow-50 text-yellow-800 px-6 py-2 text-xs border-b border-yellow-100"><i class="fas fa-exclamation-triangle mr-1"></i>필터 적용 중에는 순서 변경이 제한됩니다.</div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="header-title-row">
+                                <th class="w-8 text-center">이동</th><th class="w-8 text-center">완료</th><th class="w-24">접수번호</th><th class="w-32">업체명</th><th class="w-24">분류</th><th class="w-20">접수자</th><th class="min-w-[200px]">시험 항목 (진행률)</th><th class="w-24">접수일</th><th class="w-24">예정일</th><th class="w-24 text-right">수수료</th><th class="w-28 text-center">관리</th>
+                            </tr>
+                            <tr class="header-filter-row">
+                                <th></th><th></th>
+                                <th><input type="text" onkeyup="applyProgressFilter()" id="p-filter-regNo" class="filter-input" placeholder="검색"></th>
+                                <th><input type="text" onkeyup="applyProgressFilter()" id="p-filter-company" class="filter-input" placeholder="검색"></th>
+                                <th><select onchange="applyProgressFilter()" id="p-filter-class" class="filter-input cursor-pointer"><option value="">전체</option></select></th>
+                                <th><input type="text" onkeyup="applyProgressFilter()" id="p-filter-applicant" class="filter-input" placeholder="검색"></th>
+                                <th><input type="text" onkeyup="applyProgressFilter()" id="p-filter-items" class="filter-input" placeholder="항목"></th>
+                                <th><input type="text" onkeyup="applyProgressFilter()" id="p-filter-startDate" class="filter-input" placeholder="날짜"></th>
+                                <th><input type="text" onkeyup="applyProgressFilter()" id="p-filter-date" class="filter-input" placeholder="날짜"></th>
+                                <th></th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="progressTableBody" class="text-sm"></tbody>
+                    </table>
+                </div>
+                <div id="emptyProgress" class="hidden p-8 text-center text-gray-400">진행 중인 시험이 없습니다.</div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div class="bg-gray-100 px-6 py-3 border-b border-gray-200 flex justify-between items-center">
+                    <div class="flex items-center"><h3 class="font-bold text-gray-600 mr-3"><i class="fas fa-check-circle mr-2"></i>완료된 시험</h3></div>
+                    <div class="flex gap-3">
+                        <button onclick="resetCompletedFilters()" class="text-xs text-gray-600 hover:text-gray-800 font-medium px-2 py-1 rounded hover:bg-gray-200 transition"><i class="fas fa-undo mr-1"></i>필터 초기화</button>
+                        <button onclick="clearCompleted()" class="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition"><i class="fas fa-trash mr-1"></i>완료 목록 비우기</button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="header-title-row">
+                                <th class="w-10 text-center">상태</th><th class="w-24">접수번호</th><th class="w-32">업체명</th><th class="w-24">분류</th><th class="w-20">접수자</th><th class="min-w-[200px]">시험 항목</th><th class="w-24">완료일</th><th class="w-24 text-right">수수료</th><th class="w-16 text-center">관리</th>
+                            </tr>
+                            <tr class="header-filter-row">
+                                <th></th>
+                                <th><input type="text" onkeyup="applyCompletedFilter()" id="c-filter-regNo" class="filter-input" placeholder="검색"></th>
+                                <th><input type="text" onkeyup="applyCompletedFilter()" id="c-filter-company" class="filter-input" placeholder="검색"></th>
+                                <th><select onchange="applyCompletedFilter()" id="c-filter-class" class="filter-input cursor-pointer"><option value="">전체</option></select></th>
+                                <th><input type="text" onkeyup="applyCompletedFilter()" id="c-filter-applicant" class="filter-input" placeholder="검색"></th>
+                                <th><input type="text" onkeyup="applyCompletedFilter()" id="c-filter-items" class="filter-input" placeholder="항목"></th>
+                                <th><input type="text" onkeyup="applyCompletedFilter()" id="c-filter-date" class="filter-input" placeholder="날짜"></th>
+                                <th></th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="completedTableBody" class="text-sm text-gray-500"></tbody>
+                    </table>
+                </div>
+                <div id="emptyCompleted" class="hidden p-8 text-center text-gray-400">완료된 시험이 없습니다.</div>
+            </div>
+        </div>
+
+        <div id="calendarTab" class="tab-content hidden">
+            <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200"><div id="calendar"></div></div>
+        </div>
+
+        <div id="chartTab" class="tab-content hidden">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div class="bg-white p-6 rounded-lg shadow-sm border-l-4 border-blue-600 flex justify-between items-center"><div><p class="text-sm text-gray-500 font-bold uppercase">총 접수 건수</p><p class="text-3xl font-bold text-gray-800" id="statTotalCount">0 <span class="text-sm font-normal">건</span></p></div><div class="text-blue-200 text-4xl"><i class="fas fa-file-alt"></i></div></div>
+                <div class="bg-white p-6 rounded-lg shadow-sm border-l-4 border-indigo-600 flex justify-between items-center"><div><p class="text-sm text-gray-500 font-bold uppercase">총 수수료 합계</p><p class="text-3xl font-bold text-gray-800" id="statTotalFee">0 <span class="text-sm font-normal">원</span></p></div><div class="text-indigo-200 text-4xl"><i class="fas fa-won-sign"></i></div></div>
+            </div>
+            <div class="bg-white p-3 rounded-lg shadow-sm border border-gray-200 mb-6">
+                <div class="flex flex-col md:flex-row justify-center items-center gap-4">
+                    <div class="flex items-center gap-2"><span class="text-sm font-bold text-gray-500 mr-2"><i class="fas fa-layer-group mr-1"></i>분석 대상:</span>
+                        <button onclick="setAnalysisItem('classification')" id="btn-item-classification" class="chart-mode-btn active-mode px-3 py-1.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200">세부 분류</button>
+                        <button onclick="setAnalysisItem('company')" id="btn-item-company" class="chart-mode-btn px-3 py-1.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200">업체</button>
+                        <button onclick="setAnalysisItem('applicant')" id="btn-item-applicant" class="chart-mode-btn px-3 py-1.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200">접수자</button>
+                    </div>
+                    <div class="hidden md:block w-px h-6 bg-gray-300"></div>
+                    <div class="flex items-center gap-2"><span class="text-sm font-bold text-gray-500 mr-2"><i class="fas fa-calendar-alt mr-1"></i>기간 기준:</span>
+                        <button onclick="setTimeUnit('all')" id="btn-time-all" class="chart-mode-btn active-mode px-3 py-1.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200">전체(합산)</button>
+                        <button onclick="setTimeUnit('daily')" id="btn-time-daily" class="chart-mode-btn px-3 py-1.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200">일별</button>
+                        <button onclick="setTimeUnit('weekly')" id="btn-time-weekly" class="chart-mode-btn px-3 py-1.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200">주별</button>
+                        <button onclick="setTimeUnit('monthly')" id="btn-time-monthly" class="chart-mode-btn px-3 py-1.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200">월별</button>
+                        <button onclick="setTimeUnit('yearly')" id="btn-time-yearly" class="chart-mode-btn px-3 py-1.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200">연별</button>
+                    </div>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200"><h3 class="font-bold mb-4 text-center text-gray-700" id="chartTitle1">접수 건수 분석</h3><div style="height: 350px; position: relative;"><canvas id="mainCountChart"></canvas></div></div>
+                <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200"><h3 class="font-bold mb-4 text-center text-gray-700" id="chartTitle2">수수료 합계 분석</h3><div style="height: 350px; position: relative;"><canvas id="mainFeeChart"></canvas></div></div>
+            </div>
+        </div>
+    </main>
+
+    <div id="categoryModal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeCategoryModal()"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4" id="modal-title"><i class="fas fa-tags text-blue-900 mr-2"></i>세부 분류 항목 관리</h3>
+                    <div class="mb-4"><div class="flex gap-2"><input type="text" id="newCategoryInput" class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md border p-2" placeholder="새 분류명 입력"><button onclick="addCategoryFromModal()" class="inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none sm:text-sm">추가</button></div></div>
+                    <div class="mt-2"><ul id="modalCategoryList" class="border rounded-md divide-y divide-gray-200 max-h-60 overflow-y-auto"></ul></div>
+                </div>
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse"><button type="button" onclick="closeCategoryModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">닫기</button></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 전역 변수 ---
+        let examList = [];
+        let categories = ['섬유', '화학', '생활용품', '전기전자', '신발/가죽', '어린이제품', '기타'];
+        let calendar = null;
+        let chartInstances = {};
+        let currentTags = [];
+        let currentAnalysisItem = 'classification';
+        let currentTimeUnit = 'all';
+        let isEditing = false;
+        let editingId = null;
+        let isFiltered = false;
+
+        // --- IndexedDB 설정 ---
+        const DB_NAME = 'FitiExamSystem_Local';
+        const DB_VERSION = 1;
+        const STORE_NAME = 'keyValueStore';
+
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
+                };
+                request.onsuccess = (e) => resolve(e.target.result);
+                request.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        async function dbGet(key) {
+            try {
+                const db = await openDB();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(STORE_NAME, 'readonly');
+                    const req = tx.objectStore(STORE_NAME).get(key);
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => reject(req.error);
+                });
+            } catch(e) { console.error(e); return null; }
+        }
+
+        async function dbSet(key, val) {
+            try {
+                const db = await openDB();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(STORE_NAME, 'readwrite');
+                    const req = tx.objectStore(STORE_NAME).put(val, key);
+                    req.onsuccess = () => resolve();
+                    req.onerror = () => reject(req.error);
+                });
+            } catch(e) { console.error(e); }
+        }
+
+        // --- 초기화 ---
+        window.onload = async function() {
+            await loadData();
+            initDateInputs();
+            renderCategories();
+            renderAll();
+            initTagInput();
+        };
+
+        async function loadData() {
+            let list = await dbGet('fiti_examList');
+            let cats = await dbGet('fiti_categories');
+            
+            if (!list && localStorage.getItem('fiti_examList')) {
+                list = JSON.parse(localStorage.getItem('fiti_examList'));
+                cats = JSON.parse(localStorage.getItem('fiti_categories'));
+                await dbSet('fiti_examList', list);
+                await dbSet('fiti_categories', cats);
+            }
+
+            if (list) examList = list;
+            if (cats) categories = cats;
+        }
+
+        async function saveData() {
+            await dbSet('fiti_examList', examList);
+            await dbSet('fiti_categories', categories);
+            const ind = document.getElementById('saveStatus');
+            ind.classList.add('show');
+            setTimeout(() => ind.classList.remove('show'), 2000);
+        }
+
+        // --- 공통 기능 ---
+        function escapeHtml(text) {
+            if (typeof text !== 'string') return text;
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+                const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+        function initDateInputs() {
+            const now = new Date();
+            document.getElementById('startDate').value = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        }
+
+        // --- 태그 입력 ---
+        function initTagInput() {
+            document.getElementById('testItemInput').addEventListener('keypress', e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } });
+        }
+        function addTag() {
+            const input = document.getElementById('testItemInput');
+            const val = escapeHtml(input.value.trim());
+            if (val) { currentTags.push(val); input.value = ''; renderTags(); input.focus(); }
+        }
+        function removeTag(index) { currentTags.splice(index, 1); renderTags(); }
+        function renderTags() {
+            const container = document.getElementById('tagContainer');
+            container.innerHTML = '';
+            currentTags.forEach((tag, index) => {
+                container.innerHTML += `<div class="tag-item">${tag}<button type="button" onclick="removeTag(${index})"><i class="fas fa-times"></i></button></div>`;
+            });
+        }
+
+        // --- 분류 관리 ---
+        function renderCategories() {
+            const select = document.getElementById('classification');
+            const currentVal = select.value;
+            select.innerHTML = '';
+            categories.forEach(cat => {
+                const option = document.createElement('option');
+                option.value = cat; option.textContent = cat;
+                select.appendChild(option);
+            });
+            if(categories.includes(currentVal)) select.value = currentVal;
+            // 필터용 select 업데이트
+            ['p-filter-class', 'c-filter-class'].forEach(id => {
+                const sel = document.getElementById(id); 
+                if(sel) {
+                    const val = sel.value;
+                    sel.innerHTML = '<option value="">전체</option>';
+                    categories.forEach(cat => { 
+                        const opt = document.createElement('option'); 
+                        opt.value = cat; opt.textContent = cat; 
+                        sel.appendChild(opt); 
+                    });
+                    sel.value = val;
+                }
+            });
+        }
+
+        function renderModalCategoryList() {
+            const list = document.getElementById('modalCategoryList');
+            if(!list) return;
+            list.innerHTML = '';
+            categories.forEach(cat => {
+                list.innerHTML += `<li class="px-4 py-3 flex justify-between items-center text-sm">
+                    <span>${cat}</span>
+                    <div class="flex gap-2">
+                        <button onclick="editCategory('${cat}')" class="text-blue-500 hover:text-blue-700 text-xs">수정</button>
+                        <button onclick="deleteCategory('${cat}')" class="text-red-500 hover:text-red-700 text-xs"><i class="fas fa-trash-alt"></i></button>
+                    </div>
+                </li>`;
+            });
+        }
+
+        function updateCompanyDatalist() {
+            const list = document.getElementById('companyList');
+            if(!list) return;
+            list.innerHTML = '';
+            [...new Set(examList.map(i => i.companyName))].forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c;
+                list.appendChild(opt);
+            });
+        }
+
+        function addCategoryFromModal() {
+            const input = document.getElementById('newCategoryInput');
+            const newCat = input.value.trim();
+            if (newCat && !categories.includes(newCat)) {
+                categories.push(newCat);
+                saveData();
+                renderCategories();
+                renderModalCategoryList();
+                input.value = '';
+                input.focus();
+            } else if (categories.includes(newCat)) alert("이미 존재하는 분류입니다.");
+        }
+        
+        async function editCategory(oldCat) {
+            const newCat = prompt("수정할 분류명을 입력하세요:", oldCat);
+            if(newCat && newCat.trim() !== "" && newCat !== oldCat) {
+                if(categories.includes(newCat)) {
+                    alert("이미 존재하는 분류명입니다.");
+                    return;
+                }
+                const idx = categories.indexOf(oldCat);
+                if(idx !== -1) categories[idx] = newCat;
+                let updateCount = 0;
+                examList.forEach(item => {
+                    if(item.classification === oldCat) {
+                        item.classification = newCat;
+                        updateCount++;
+                    }
+                });
+                await saveData();
+                renderCategories();
+                renderModalCategoryList();
+                renderAll(); 
+                alert(`분류명이 변경되었습니다.\n관련된 ${updateCount}건의 데이터도 함께 수정되었습니다.`);
+            }
+        }
+
+        function deleteCategory(cat) {
+            if (confirm("삭제하시겠습니까?")) {
+                categories = categories.filter(c => c !== cat);
+                saveData();
+                renderCategories();
+                renderModalCategoryList();
+            }
+        }
+
+        function openCategoryModal() {
+            document.getElementById('categoryModal').classList.remove('hidden');
+            renderModalCategoryList();
+            document.getElementById('newCategoryInput').focus();
+        }
+
+        function closeCategoryModal() {
+            document.getElementById('categoryModal').classList.add('hidden');
+        }
+
+        // --- CRUD ---
+        async function saveExam() {
+            const regNo = escapeHtml(document.getElementById('regNo').value);
+            const companyName = escapeHtml(document.getElementById('companyName').value);
+            const classification = document.getElementById('classification').value;
+            const applicant = escapeHtml(document.getElementById('applicant').value);
+            const startDate = document.getElementById('startDate').value;
+            const dueDate = document.getElementById('dueDate').value;
+            const fee = document.getElementById('fee').value;
+
+            if (!regNo || !companyName || !startDate || !dueDate) { alert("필수 항목을 입력해주세요."); return; }
+
+            const inputRest = escapeHtml(document.getElementById('testItemInput').value.trim());
+            if (inputRest) currentTags.push(inputRest);
+
+            let oldItems = [];
+            if (isEditing && editingId) {
+                const old = examList.find(i => String(i.id) === String(editingId));
+                if(old) oldItems = old.testItems || [];
+            }
+            const testItems = currentTags.map(tagName => {
+                const matched = oldItems.find(o => o.name === tagName);
+                return { name: tagName, done: matched ? matched.done : false };
+            });
+
+            if (isEditing && editingId) {
+                const idx = examList.findIndex(i => String(i.id) === String(editingId));
+                if (idx > -1) {
+                    examList[idx] = { ...examList[idx], regNo, companyName, classification, applicant, startDate, dueDate, fee: fee ? parseInt(fee) : 0, testItems };
+                    alert("수정되었습니다.");
+                }
+            } else {
+                const newItem = { id: generateUUID(), regNo, companyName, classification, applicant, startDate, dueDate, fee: fee ? parseInt(fee) : 0, testItems, isCompleted: false, isHeld: false };
+                examList.push(newItem); 
+            }
+            
+            // 날짜순(오름차순) -> 예정일 같으면 접수번호순(오름차순)
+            examList.sort((a, b) => {
+                if (a.dueDate === b.dueDate) {
+                    return a.regNo.localeCompare(b.regNo);
+                }
+                return new Date(a.dueDate) - new Date(b.dueDate);
+            });
+
+            await saveData(); cancelEdit(); renderAll();
+        }
+        
+        async function saveBatchExams() {
+            const regNo = escapeHtml(document.getElementById('regNo').value);
+            const companyName = escapeHtml(document.getElementById('companyName').value);
+            const classification = document.getElementById('classification').value;
+            const applicant = escapeHtml(document.getElementById('applicant').value);
+            const startDate = document.getElementById('startDate').value;
+            const dueDate = document.getElementById('dueDate').value;
+            const fee = document.getElementById('fee').value;
+
+            if (!regNo || !companyName || !startDate || !dueDate) { alert("필수 항목을 입력해주세요."); return; }
+            if (isEditing) { alert("수정 모드에서는 연속 등록을 사용할 수 없습니다. 취소 후 다시 시도하세요."); return; }
+
+            const countStr = prompt("연속 등록할 건수를 입력하세요 (현재 번호 포함):", "1");
+            const count = parseInt(countStr);
+            if (!count || count < 2) {
+                if(count === 1) saveExam(); 
+                return;
+            }
+
+            const inputRest = escapeHtml(document.getElementById('testItemInput').value.trim());
+            if (inputRest) currentTags.push(inputRest);
+            
+            // Generate test items template
+            const testItemsTemplate = currentTags.map(tagName => ({ name: tagName, done: false }));
+
+            // Parse RegNo number part
+            const match = regNo.match(/(.*?)(\d+)$/);
+            if (!match) {
+                alert("접수 번호가 숫자로 끝나지 않아 연속 등록을 할 수 없습니다. (예: 2024-001)");
+                return;
+            }
+            
+            const prefix = match[1];
+            const numStr = match[2];
+            const startNum = parseInt(numStr, 10);
+            const numLen = numStr.length;
+
+            for (let i = 0; i < count; i++) {
+                const nextNum = startNum + i;
+                const nextRegNo = prefix + String(nextNum).padStart(numLen, '0');
+                
+                // Deep copy test items
+                const itemsCopy = JSON.parse(JSON.stringify(testItemsTemplate));
+                
+                const newItem = { 
+                    id: generateUUID(), 
+                    regNo: nextRegNo, 
+                    companyName, classification, applicant, startDate, dueDate, 
+                    fee: fee ? parseInt(fee) : 0, 
+                    testItems: itemsCopy, 
+                    isCompleted: false, 
+                    isHeld: false 
+                };
+                examList.push(newItem);
+            }
+
+            // 날짜순(오름차순) -> 예정일 같으면 접수번호순(오름차순)
+            examList.sort((a, b) => {
+                if (a.dueDate === b.dueDate) {
+                    return a.regNo.localeCompare(b.regNo);
+                }
+                return new Date(a.dueDate) - new Date(b.dueDate);
+            });
+
+            await saveData(); 
+            cancelEdit(); 
+            renderAll();
+            alert(`${count}건이 연속 등록되었습니다.`);
+        }
+
+        async function deleteExam(id) {
+            if (confirm("삭제하시겠습니까?")) {
+                examList = examList.filter(x => String(x.id) !== String(id));
+                await saveData(); renderAll();
+            }
+        }
+
+        async function toggleComplete(id) {
+            const idx = examList.findIndex(x => String(x.id) === String(id));
+            if (idx > -1) {
+                examList[idx].isCompleted = !examList[idx].isCompleted;
+                await saveData(); renderAll();
+            }
+        }
+        
+        async function toggleHold(id) {
+            const item = examList.find(x => String(x.id) === String(id));
+            if (item) {
+                item.isHeld = !item.isHeld;
+                await saveData(); renderAll();
+            }
+        }
+
+        async function toggleTestItem(examId, idx) {
+            const item = examList.find(x => String(x.id) === String(examId));
+            if (item && item.testItems && item.testItems[idx]) {
+                item.testItems[idx].done = !item.testItems[idx].done;
+                if (item.testItems.every(i => i.done) && !item.isCompleted) {
+                    if (confirm("모든 항목 완료. 완료 처리하시겠습니까?")) item.isCompleted = true;
+                }
+                await saveData(); renderAll();
+            }
+        }
+
+        function editExam(id) {
+            const item = examList.find(e => String(e.id) === String(id)); if (!item) return;
+            isEditing = true; editingId = id;
+            document.getElementById('regNo').value = item.regNo;
+            document.getElementById('companyName').value = item.companyName;
+            document.getElementById('classification').value = item.classification;
+            document.getElementById('applicant').value = item.applicant;
+            document.getElementById('startDate').value = item.startDate;
+            document.getElementById('dueDate').value = item.dueDate;
+            document.getElementById('fee').value = item.fee;
+            currentTags = (item.testItems || []).map(i => i.name); renderTags();
+            
+            document.getElementById('formTitle').innerHTML = '<i class="fas fa-edit mr-2"></i>시험 접수 수정';
+            document.getElementById('inputFormSection').classList.add('border-blue-500', 'bg-blue-50');
+            const btn = document.getElementById('btnSave');
+            btn.innerHTML = '<i class="fas fa-check mr-2"></i> 수정 저장';
+            btn.classList.replace('fiti-btn', 'bg-green-600'); 
+            btn.classList.add('text-white', 'hover:bg-green-700');
+            
+            // 연속등록 버튼 숨김
+            document.getElementById('btnBatchSave').classList.add('hidden');
+            document.getElementById('btnCancel').classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function cancelEdit() {
+            isEditing = false; editingId = null;
+            document.getElementById('regNo').value = '';
+            document.getElementById('companyName').value = '';
+            document.getElementById('applicant').value = '';
+            document.getElementById('fee').value = '';
+            document.getElementById('testItemInput').value = '';
+            initDateInputs(); currentTags = []; renderTags();
+            
+            document.getElementById('formTitle').innerHTML = '<i class="fas fa-pen-to-square mr-2"></i>신규 시험 접수 등록';
+            document.getElementById('inputFormSection').classList.remove('border-blue-500', 'bg-blue-50');
+            const btn = document.getElementById('btnSave');
+            btn.innerHTML = '<i class="fas fa-save mr-2"></i> 시험 접수 등록';
+            btn.classList.replace('bg-green-600', 'fiti-btn');
+            btn.classList.remove('text-white', 'hover:bg-green-700'); 
+            
+            // 연속등록 버튼 표시
+            document.getElementById('btnBatchSave').classList.remove('hidden');
+            document.getElementById('btnCancel').classList.add('hidden');
+        }
+
+        function copyToForm(id) {
+            const item = examList.find(e => String(e.id) === String(id)); if (!item) return;
+            if (isEditing) cancelEdit();
+            document.getElementById('companyName').value = item.companyName;
+            document.getElementById('classification').value = item.classification;
+            document.getElementById('applicant').value = item.applicant;
+            document.getElementById('startDate').value = item.startDate; // 추가됨
+            document.getElementById('dueDate').value = item.dueDate;     // 추가됨
+            document.getElementById('fee').value = item.fee;
+            currentTags = (item.testItems || []).map(i => i.name); renderTags();
+            alert("정보(날짜포함)가 복사되었습니다.");
+            document.getElementById('regNo').focus(); window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // --- 엑셀 ---
+        function exportToExcel() {
+            if(!examList.length) { alert("데이터 없음"); return; }
+            const wb = XLSX.utils.book_new();
+            
+            // 1. Raw Data (Backup)
+            const exportData = examList.map(item => ({
+                "ID": item.id, "접수번호": item.regNo, "업체명": item.companyName, "분류": item.classification,
+                "접수자": item.applicant, "시험항목": (item.testItems||[]).map(t=>`${t.name}:${t.done?'O':'X'}`).join(','),
+                "접수일": item.startDate, "예정일": item.dueDate, "수수료": item.fee, 
+                "상태": item.isHeld ? "보류" : (item.isCompleted?'완료':'진행중')
+            }));
+            const wsRaw = XLSX.utils.json_to_sheet(exportData);
+            XLSX.utils.book_append_sheet(wb, wsRaw, "전체_데이터(복구용)");
+
+            // 2. Statistics Report
+            const stats = { total:{c:0,f:0}, class:{}, company:{}, month:{} };
+            examList.forEach(i => {
+                const f = i.fee||0; stats.total.c++; stats.total.f+=f;
+                
+                const cls = i.classification||'미분류';
+                if(!stats.class[cls]) stats.class[cls]={c:0,f:0};
+                stats.class[cls].c++; stats.class[cls].f+=f;
+
+                const comp = i.companyName||'미입력';
+                if(!stats.company[comp]) stats.company[comp]={c:0,f:0};
+                stats.company[comp].c++; stats.company[comp].f+=f;
+
+                const m = (i.startDate||'').slice(0,7);
+                if(m){ if(!stats.month[m]) stats.month[m]={c:0,f:0}; stats.month[m].c++; stats.month[m].f+=f; }
+            });
+
+            // Convert to Arrays
+            const arrCls = Object.entries(stats.class).map(([k,v])=>({"구분":k, "건수":v.c, "금액":v.f}));
+            const arrMonth = Object.entries(stats.month).map(([k,v])=>({"월":k, "건수":v.c, "금액":v.f})).sort((a,b)=>b["월"].localeCompare(a["월"]));
+            const arrComp = Object.entries(stats.company).map(([k,v])=>({"업체":k, "건수":v.c, "금액":v.f})).sort((a,b)=>b["건수"]-a["건수"]).slice(0,20);
+
+            const wsStats = XLSX.utils.aoa_to_sheet([["[종합 통계]"]]);
+            XLSX.utils.sheet_add_json(wsStats, [{"항목":"전체합계", "건수":stats.total.c, "금액":stats.total.f}], {origin: "A2"});
+            
+            XLSX.utils.sheet_add_aoa(wsStats, [[""]], {origin:-1});
+            XLSX.utils.sheet_add_aoa(wsStats, [["[세부 분류별]"]], {origin:-1});
+            XLSX.utils.sheet_add_json(wsStats, arrCls, {origin:-1});
+
+            XLSX.utils.sheet_add_aoa(wsStats, [[""]], {origin:-1});
+            XLSX.utils.sheet_add_aoa(wsStats, [["[월별 추이]"]], {origin:-1});
+            XLSX.utils.sheet_add_json(wsStats, arrMonth, {origin:-1});
+
+            XLSX.utils.sheet_add_aoa(wsStats, [[""]], {origin:-1});
+            XLSX.utils.sheet_add_aoa(wsStats, [["[업체별 상위 20]"]], {origin:-1});
+            XLSX.utils.sheet_add_json(wsStats, arrComp, {origin:-1});
+
+            XLSX.utils.book_append_sheet(wb, wsStats, "통계_분석_보고서");
+
+            // 3. Settings
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(categories.map(c=>({"분류":c}))), "설정(분류)");
+            XLSX.writeFile(wb, `FITI_통합백업_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        function importFromExcel(input) {
+            const file = input.files[0]; if(!file) return;
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+                    // Find raw data sheet (usually first or named)
+                    let ws = wb.Sheets["전체_데이터(복구용)"] || wb.Sheets[wb.SheetNames[0]];
+                    const data = XLSX.utils.sheet_to_json(ws);
+                    
+                    // Basic validation
+                    if(data.length > 0 && (!data[0]["ID"] && !data[0]["접수번호"])) {
+                        alert("올바른 백업 파일 형식이 아닌 것 같습니다."); return;
+                    }
+
+                    if(confirm(`${data.length}건 데이터 병합?`)) {
+                        for(const r of data) {
+                            if(!examList.find(x=>String(x.id) === String(r["ID"]))) {
+                                examList.push({
+                                    id: r["ID"]||generateUUID(), regNo: r["접수번호"], companyName: r["업체명"], classification: r["분류"],
+                                    applicant: r["접수자"], startDate: r["접수일"], dueDate: r["예정일"], fee: r["수수료"], 
+                                    isCompleted: r["상태"]==='완료', isHeld: r["상태"]==='보류',
+                                    testItems: (r["시험항목"]||'').split(',').map(s=>{ const [n,d]=s.split(':'); return {name:n, done:d==='O'} }).filter(i=>i.name)
+                                });
+                            }
+                        }
+                        await saveData(); renderAll(); alert("완료");
+                    }
+                } catch(err){ alert("오류: " + err.message); }
+                input.value='';
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // --- 렌더링 ---
+        function renderAll() {
+            renderProgressTable(); renderCompletedTable(); 
+            if(calendar) updateCalendarEvents(); 
+            renderCharts(); updateCompanyDatalist();
+        }
+
+        function renderProgressTable() {
+            const tbody = document.getElementById('progressTableBody'); tbody.innerHTML = '';
+            const filters = {
+                reg: document.getElementById('p-filter-regNo').value.toLowerCase(),
+                comp: document.getElementById('p-filter-company').value.toLowerCase(),
+                cls: document.getElementById('p-filter-class').value,
+                app: document.getElementById('p-filter-applicant').value.toLowerCase(),
+                item: document.getElementById('p-filter-items').value.toLowerCase(),
+                date: document.getElementById('p-filter-date').value,
+                start: document.getElementById('p-filter-startDate').value
+            };
+            isFiltered = Object.values(filters).some(v=>v);
+            document.getElementById('dragWarning').classList.toggle('hidden', !isFiltered);
+
+            const list = examList.filter(x => !x.isCompleted && 
+                (!filters.reg || x.regNo.toLowerCase().includes(filters.reg)) &&
+                (!filters.comp || x.companyName.toLowerCase().includes(filters.comp)) &&
+                (!filters.cls || x.classification === filters.cls) &&
+                (!filters.app || String(x.applicant).toLowerCase().includes(filters.app)) &&
+                (!filters.date || x.dueDate.includes(filters.date)) &&
+                (!filters.start || x.startDate.includes(filters.start)) &&
+                (!filters.item || (x.testItems||[]).some(t=>t.name.toLowerCase().includes(filters.item)))
+            );
+            
+            if(list.length===0) document.getElementById('emptyProgress').classList.remove('hidden'); else document.getElementById('emptyProgress').classList.add('hidden');
+            
+            // [수정] 한국 시간(로컬 타임) 기준으로 오늘 날짜를 정확히 가져오도록 변경
+            const now = new Date();
+            const today = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+            list.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = item.isHeld ? "held-row draggable-item" : "hover:bg-blue-50 transition bg-white draggable-item";
+                if(isFiltered) tr.classList.add('draggable-disabled'); else tr.setAttribute('draggable', true);
+                tr.dataset.id = item.id;
+                
+                const dDiff = Math.ceil((new Date(item.dueDate) - new Date(today)) / 86400000);
+                
+                let dDayBadge = '';
+                let dateClass = 'text-gray-800';
+                
+                if (item.isHeld) {
+                    dDayBadge = `<span class="inline-flex items-center justify-center bg-orange-200 text-orange-800 text-[10px] font-bold px-1.5 py-0.5 rounded mt-0.5 w-fit"><i class="fas fa-pause mr-1"></i>보류중</span>`;
+                    dateClass = 'text-orange-700';
+                } else if (dDiff < 0) {
+                    dDayBadge = `<span class="inline-flex items-center justify-center bg-red-100 text-red-700 text-[10px] font-bold px-1.5 py-0.5 rounded mt-0.5 w-fit">지연 ${Math.abs(dDiff)}일</span>`;
+                    dateClass = 'text-red-600 font-bold';
+                } else if (dDiff === 0) {
+                    dDayBadge = `<span class="inline-flex items-center justify-center bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded mt-0.5 w-fit animate-pulse">D-DAY</span>`;
+                    dateClass = 'text-red-600 font-bold';
+                } else if (dDiff <= 3) {
+                    dDayBadge = `<span class="inline-flex items-center justify-center bg-orange-100 text-orange-700 text-[10px] font-bold px-1.5 py-0.5 rounded mt-0.5 w-fit">D-${dDiff}</span>`;
+                    dateClass = 'text-gray-900';
+                } else {
+                    dDayBadge = `<span class="inline-flex items-center justify-center bg-gray-100 text-gray-500 text-[10px] font-medium px-1.5 py-0.5 rounded mt-0.5 w-fit">D-${dDiff}</span>`;
+                    dateClass = 'text-gray-600';
+                }
+
+                const itemsHtml = (item.testItems||[]).map((t,i) => `<span onclick="toggleTestItem('${item.id}',${i})" class="test-item-badge px-2 py-0.5 rounded text-xs border ${t.done?'test-item-done':'test-item-todo'}">${escapeHtml(t.name)}</span>`).join(' ');
+                
+                // 보류/재개 아이콘
+                const holdIcon = item.isHeld ? '<i class="fas fa-play"></i>' : '<i class="fas fa-pause"></i>';
+                const holdTooltip = item.isHeld ? '재개' : '보류';
+                const holdColor = item.isHeld ? 'text-green-600' : 'text-orange-400';
+
+                tr.innerHTML = `<td class="text-center text-gray-400 cursor-move"><i class="fas fa-grip-lines"></i></td>
+                                <td class="text-center"><input type="checkbox" onchange="toggleComplete('${item.id}')"></td>
+                                <td>${escapeHtml(item.regNo)}</td><td>${escapeHtml(item.companyName)}</td><td>${escapeHtml(item.classification)}</td><td>${escapeHtml(item.applicant)}</td>
+                                <td>${itemsHtml}</td><td>${item.startDate}</td>
+                                <td class="align-top pt-3">
+                                    <div class="flex flex-col">
+                                        <span class="${dateClass} text-sm">${item.dueDate}</span>
+                                        ${dDayBadge}
+                                    </div>
+                                </td>
+                                <td class="text-right">${(item.fee||0).toLocaleString()}</td>
+                                <td class="text-center flex justify-center gap-2">
+                                    <button onclick="editExam('${item.id}')" class="btn-tooltip text-green-600 hover:text-green-800" data-tooltip="수정"><i class="fas fa-edit"></i></button>
+                                    <button onclick="copyToForm('${item.id}')" class="btn-tooltip text-blue-500 hover:text-blue-700" data-tooltip="복사"><i class="fas fa-copy"></i></button>
+                                    <button onclick="toggleHold('${item.id}')" class="btn-tooltip ${holdColor} hover:text-orange-600" data-tooltip="${holdTooltip}">${holdIcon}</button>
+                                    <button onclick="deleteExam('${item.id}')" class="btn-tooltip text-gray-400 hover:text-red-500" data-tooltip="삭제"><i class="fas fa-trash-alt"></i></button>
+                                </td>`;
+                if(!isFiltered) addDragEvents(tr);
+                tbody.appendChild(tr);
+            });
+        }
+
+        // (renderCompletedTable, renderCharts, switchTab 등 나머지 함수들도 동일 로직 유지)
+        function renderCompletedTable() {
+            const tbody = document.getElementById('completedTableBody'); tbody.innerHTML = '';
+            const filters = {
+                reg: document.getElementById('c-filter-regNo').value.toLowerCase(),
+                comp: document.getElementById('c-filter-company').value.toLowerCase(),
+                cls: document.getElementById('c-filter-class').value,
+                app: document.getElementById('c-filter-applicant').value.toLowerCase(),
+                item: document.getElementById('c-filter-items').value.toLowerCase(),
+                date: document.getElementById('c-filter-date').value
+            };
+            const list = examList.filter(x => x.isCompleted && 
+                (!filters.reg || x.regNo.toLowerCase().includes(filters.reg)) &&
+                (!filters.comp || x.companyName.toLowerCase().includes(filters.comp)) &&
+                (!filters.cls || x.classification === filters.cls) &&
+                (!filters.app || String(x.applicant).toLowerCase().includes(filters.app)) &&
+                (!filters.date || x.dueDate.includes(filters.date)) &&
+                (!filters.item || (x.testItems||[]).some(t=>t.name.toLowerCase().includes(filters.item)))
+            );
+            if(list.length===0) document.getElementById('emptyCompleted').classList.remove('hidden'); else document.getElementById('emptyCompleted').classList.add('hidden');
+            list.forEach(item => {
+                const tr = document.createElement('tr'); tr.className = "completed-row";
+                tr.innerHTML = `<td class="text-center"><i class="fas fa-check text-green-500"></i></td>
+                                <td>${escapeHtml(item.regNo)}</td><td>${escapeHtml(item.companyName)}</td><td>${escapeHtml(item.classification)}</td><td>${escapeHtml(item.applicant)}</td>
+                                <td>${(item.testItems||[]).map(t=>escapeHtml(t.name)).join(', ')}</td><td>${item.dueDate}</td>
+                                <td class="text-right">${(item.fee||0).toLocaleString()}</td>
+                                <td class="text-center flex justify-center gap-2">
+                                    <button onclick="copyToForm('${item.id}')" class="text-gray-400 hover:text-blue-700"><i class="fas fa-copy"></i></button>
+                                    <button onclick="toggleComplete('${item.id}')" class="text-blue-500"><i class="fas fa-undo"></i></button>
+                                </td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function switchTab(id) {
+            document.querySelectorAll('.tab-content').forEach(x => x.classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`btn-${id}`).classList.add('active');
+            if (id === 'calendarTab') { if (!calendar) initCalendar(); else setTimeout(() => calendar.updateSize(), 200); }
+            if (id === 'chartTab') setTimeout(renderCharts, 100);
+        }
+
+        function initCalendar() { 
+            const calEl = document.getElementById('calendar');
+            if(!calEl) return;
+            calendar = new FullCalendar.Calendar(calEl, { 
+                initialView: 'dayGridMonth', 
+                locale: 'ko', 
+                events: getEvents(),
+                eventClick: function(info) {
+                    const id = info.event.extendedProps.id;
+                    if(confirm(`[${info.event.title}] 건을 수정하시겠습니까?`)) {
+                        switchTab('listTab'); 
+                        setTimeout(() => editExam(id), 100); 
+                    }
+                }
+            }); 
+            calendar.render(); 
+        }
+        
+        function getEvents() { 
+            return examList.filter(x=>!x.isCompleted).map(x=>({ 
+                title: x.regNo, 
+                start: x.dueDate, 
+                color: x.isHeld ? '#ea580c' : '#004098', // 보류는 주황색, 일반은 파란색
+                extendedProps: { id: x.id } 
+            })); 
+        }
+        
+        function updateCalendarEvents() { if(calendar){ calendar.removeAllEvents(); calendar.addEventSource(getEvents()); } }
+
+        function renderCharts() {
+            const c1 = document.getElementById('mainCountChart');
+            const c2 = document.getElementById('mainFeeChart');
+            if(!c1 || !c2) return;
+
+            const totalCount = examList.length;
+            const totalFee = examList.reduce((s,i)=>s+(i.fee||0),0);
+            document.getElementById('statTotalCount').innerText = totalCount.toLocaleString() + " 건";
+            document.getElementById('statTotalFee').innerText = totalFee.toLocaleString() + " 원";
+            if (currentTimeUnit === 'all') renderAggregateChart(); else renderCrossTabChart();
+        }
+        function getGroupKey(item) {
+            if (currentAnalysisItem === 'classification') return item.classification || '미분류';
+            if (currentAnalysisItem === 'company') return item.companyName || '미입력';
+            if (currentAnalysisItem === 'applicant') return item.applicant || '미지정';
+            return 'Unknown';
+        }
+        function renderAggregateChart() {
+            const agg = {};
+            examList.forEach(i => { const k = getGroupKey(i); if(!agg[k]) agg[k]={c:0,f:0}; agg[k].c++; agg[k].f+=(i.fee||0); });
+            const sorted = Object.keys(agg).sort((a,b)=>agg[b].c - agg[a].c).slice(0,15);
+            updateChart('mainCountChart', 'bar', sorted, [{label:'건수', data:sorted.map(k=>agg[k].c), backgroundColor:'#004098'}], true);
+            updateChart('mainFeeChart', 'bar', sorted, [{label:'금액', data:sorted.map(k=>agg[k].f), backgroundColor:'#6366f1'}], true);
+        }
+        function renderCrossTabChart() {
+            const dates = new Set();
+            examList.forEach(i => {
+                let d = i.startDate || '2024-01-01';
+                if(currentTimeUnit==='monthly') d=d.slice(0,7);
+                else if(currentTimeUnit==='yearly') d=d.slice(0,4);
+                dates.add(d);
+            });
+            const labels = Array.from(dates).sort();
+            const counts = {};
+            examList.forEach(i => { const k=getGroupKey(i); counts[k]=(counts[k]||0)+1; });
+            const tops = Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).slice(0,5);
+            const datasetsC = [], datasetsF = [];
+            const colors = ['#004098', '#2563eb', '#60a5fa', '#93c5fd', '#bfdbfe', '#9ca3af'];
+            [...tops, '기타'].forEach((key, idx) => {
+                const dataC = [], dataF = [];
+                labels.forEach(lbl => {
+                    const match = examList.filter(i => {
+                        let d = i.startDate || '2024-01-01';
+                        if(currentTimeUnit==='monthly') d=d.slice(0,7);
+                        else if(currentTimeUnit==='yearly') d=d.slice(0,4);
+                        const k = getGroupKey(i);
+                        const isKey = key==='기타' ? !tops.includes(k) : k===key;
+                        return d===lbl && isKey;
+                    });
+                    dataC.push(match.length);
+                    dataF.push(match.reduce((s,x)=>s+(x.fee||0),0));
+                });
+                if(dataC.some(v=>v>0)) {
+                    datasetsC.push({label:key, data:dataC, backgroundColor:colors[idx]});
+                    datasetsF.push({label:key, data:dataF, backgroundColor:colors[idx]});
+                }
+            });
+            updateChart('mainCountChart', 'bar', labels, datasetsC, false);
+            updateChart('mainFeeChart', 'bar', labels, datasetsF, false);
+        }
+        function updateChart(id, type, labels, datasets, isHoriz) {
+            const ctx = document.getElementById(id).getContext('2d');
+            if(chartInstances[id]) chartInstances[id].destroy();
+            chartInstances[id] = new Chart(ctx, {
+                type, data: {labels, datasets},
+                options: {
+                    indexAxis: isHoriz?'y':'x', responsive:true, maintainAspectRatio:false,
+                    plugins: { legend: {display: !isHoriz} },
+                    scales: { x:{stacked:!isHoriz, beginAtZero:true}, y:{stacked:!isHoriz, beginAtZero:true} }
+                }
+            });
+        }
+        function updateBtnStyles(prefix, val) {
+            document.querySelectorAll(`button[id^='${prefix}']`).forEach(b => { b.classList.remove('active-mode','bg-white','text-white'); b.classList.add('bg-gray-100','text-gray-600'); });
+            document.getElementById(prefix+val)?.classList.add('active-mode');
+        }
+        // 필터링 함수
+        window.resetProgressFilters = function() { ['regNo','company','class','applicant','items','date','startDate'].forEach(id => document.getElementById('p-filter-'+id).value=''); renderProgressTable(); }
+        window.applyProgressFilter = function() { renderProgressTable(); }
+        window.resetCompletedFilters = function() { ['regNo','company','class','applicant','items','date'].forEach(id => document.getElementById('c-filter-'+id).value=''); renderCompletedTable(); }
+        window.applyCompletedFilter = function() { renderCompletedTable(); }
+        
+        // 카테고리 관리
+        window.addCategoryFromModal = async function() { const v=document.getElementById('newCategoryInput').value.trim(); if(v && !categories.includes(v)) { categories.push(v); await saveData(); renderCategories(); renderModalCategoryList(); } else if(categories.includes(v)) alert("이미 존재"); document.getElementById('newCategoryInput').value=''; }
+        window.deleteCategory = async function(c) { if(confirm("삭제?")) { categories=categories.filter(x=>x!==c); await saveData(); renderCategories(); renderModalCategoryList(); } }
+        window.openCategoryModal = function() { document.getElementById('categoryModal').classList.remove('hidden'); renderModalCategoryList(); }
+        window.closeCategoryModal = function() { document.getElementById('categoryModal').classList.add('hidden'); }
+        window.editCategory = editCategory; // 전역 스코프 연결
+
+        // 기타
+        window.setAnalysisItem = function(i) { currentAnalysisItem = i; updateBtnStyles('btn-item-', i); renderCharts(); }
+        window.setTimeUnit = function(u) { currentTimeUnit = u; updateBtnStyles('btn-time-', u); renderCharts(); }
+        window.clearCompleted = async function() { if(confirm("완료목록 삭제?")) { examList=examList.filter(x=>!x.isCompleted); await saveData(); renderAll(); } }
+        
+        let dragSrcEl=null;
+        function addDragEvents(row) {
+            row.addEventListener('dragstart', e => {
+                if (isFiltered) {
+                    e.preventDefault();
+                    return false;
+                }
+                dragSrcEl = row;
+                e.dataTransfer.effectAllowed = 'move';
+                setTimeout(() => row.classList.add('dragging'), 0);
+            });
+
+            row.addEventListener('dragend', () => {
+                row.classList.remove('dragging');
+                document.querySelectorAll('.draggable-item').forEach(el => el.classList.remove('drop-over-top', 'drop-over-bottom'));
+            });
+
+            row.addEventListener('dragover', e => {
+                e.preventDefault(); 
+                e.dataTransfer.dropEffect = 'move';
+                
+                if (isFiltered || dragSrcEl === row) return;
+
+                const rect = row.getBoundingClientRect();
+                const offset = e.clientY - rect.top;
+                
+                row.classList.remove('drop-over-top', 'drop-over-bottom');
+                if (offset < rect.height / 2) {
+                    row.classList.add('drop-over-top');
+                } else {
+                    row.classList.add('drop-over-bottom');
+                }
+                return false;
+            });
+
+            row.addEventListener('dragleave', () => {
+                row.classList.remove('drop-over-top', 'drop-over-bottom');
+            });
+
+            row.addEventListener('drop', async e => {
+                e.stopPropagation();
+                row.classList.remove('drop-over-top', 'drop-over-bottom');
+
+                if (isFiltered || dragSrcEl === row) return false;
+
+                const sIdStr = dragSrcEl.dataset.id;
+                const tIdStr = row.dataset.id;
+
+                const sIdx = examList.findIndex(x => String(x.id) === sIdStr);
+                const tIdx = examList.findIndex(x => String(x.id) === tIdStr);
+
+                if (sIdx === -1 || tIdx === -1) return false;
+
+                const rect = row.getBoundingClientRect();
+                const offset = e.clientY - rect.top;
+                const isAfter = offset > (rect.height / 2);
+
+                // 원본 제거
+                const [movedItem] = examList.splice(sIdx, 1);
+
+                // 이동 후의 타겟 인덱스 재계산
+                let finalTIdx = examList.findIndex(x => String(x.id) === tIdStr);
+                if (isAfter) finalTIdx++;
+
+                examList.splice(finalTIdx, 0, movedItem);
+
+                await saveData();
+                renderAll();
+                return false;
+            });
+        }
+    </script>
+</body>
+</html>
